@@ -1,0 +1,11 @@
+transformers==4.30.2
+deepspeed==0.14.5
+accelerate==0.20.2
+diffusers==0.20.0
+datasets
+scipy
+pandas
+xformers==0.0.28
+bitsandbytes
+safetensors
+pyyaml
