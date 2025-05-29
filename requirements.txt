@@ -1,11 +1,21 @@
-transformers==4.30.2
+transformers==4.44.2
+accelerate==0.31.0
 deepspeed==0.14.5
-accelerate==0.20.2
-diffusers==0.20.0
+numpy==1.24.3
+diffusers
 datasets
+requests
+fastapi
 scipy
 pandas
-xformers==0.0.28
+xformers
+ftfy
+Jinja2
 bitsandbytes
 safetensors
 pyyaml
+pillow==10.3.0
+--extra-index-url https://download.pytorch.org/whl/cu124
+torch==2.4.1
+torchvision==0.19.1
+torchaudio==2.4.1

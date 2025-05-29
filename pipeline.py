@@ -20,7 +20,7 @@ import math
 import os
 import torch
 import torch.nn as nn
-from diffusers import DiffusionPipeline, EulerDiscreteScheduler
+from diffusers import DiffusionPipeline, EulerDiscreteScheduler, SchedulerMixin
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.utils import logging
@@ -60,7 +60,7 @@ class ChatsSDXLPipeline(DiffusionPipeline, ConfigMixin):
         tokenizer: CLIPTokenizer,
         tokenizer_two: CLIPTokenizer,
         vae: AutoencoderKL,
-        scheduler: Any
+        scheduler: SchedulerMixin
     ):
         super().__init__()
 
