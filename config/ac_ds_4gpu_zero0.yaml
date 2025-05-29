@@ -12,4 +12,4 @@ tpu_env: []
 tpu_use_cluster: false
 tpu_use_sudo: false
 use_cpu: false
-num_processes: 1
+num_processes: 4

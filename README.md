@@ -49,23 +49,25 @@ We provide pretrained CHATS checkpoints on SDXL for easy download and evaluation
 ## 🛠️ Quick Start
 
 ```python
+import torch
 from pipeline import ChatsSDXLPipeline
 
 # Load CHATS-SDXL pipeline
 pipe = ChatsSDXLPipeline.from_pretrained(
         "AIDC-AI/CHATS",
         torch_dtype=torch.bfloat16
-    ).to("cuda")
+)
+pipe.to("cuda")
 
 # Generate images
 images = pipe(
-    prompts=["A serene mountain lake at sunset"],
+    prompt=["A serene mountain lake at sunset"],
     num_inference_steps=50,
     guidance_scale=5,
     seed=0
 )
 
-# 4. Save outputs
+# Save outputs
 for i, img in enumerate(images):
     img.save(f"output_{i}.png")
 ```
@@ -97,8 +99,8 @@ accelerate launch --config_file=config/ac_ds_8gpu_zero0.yaml  train.py \
 ### Args:
 - config_file: This DeepSpeed parameter allows you to specify the configuration file. If you wish to adjust the number of GPUs used for training, simply change the value of **num_processes** in the ac_ds_xgpu_zero0.yaml file to reflect the desired GPU count.
 - pretrained_model_name_or_path: name or patch of unet model to load
-- pretrained_vae_model_name_or_path: v=name or patch of vae model to load
-- max_train_steps: max steps to train_batch_size
+- pretrained_vae_model_name_or_path: name or patch of vae model to load
+- max_train_steps: max steps to train
 - output: output dir
 - dataset_name: the huggingface sufix of the selected dataset (e.g. OIP)
 
