@@ -1,11 +1,13 @@
 # CHATS: Combining Human-Aligned Optimization and Test-Time Sampling for Text-to-Image Generation (ICML2025)
 
+
 <p align="center"> 
 📝 <a href="https://arxiv.org/abs/2502.12579" target="_blank">Paper</a>  • 💡 <a href="https://zhuanlan.zhihu.com/p/1904156278621737628" target="_blank">知乎</a> • 🤗 <a href="https://huggingface.co/AIDC-AI/CHATS" target="_blank">HF Repo</a> • 🖼️ <a href="https://huggingface.co/spaces/AIDC-AI/CHATS" target="_blank">Demo</a> 
 </p>
 
 CHATS is a next-generation framework that unifies human preference alignment with classifier-free guidance by modeling both preferred and dispreferred distributions and using a proxy-prompt-based sampling strategy for superior text–image alignment, fidelity, and aesthetic consistency. See the images generated below for examples.
 
+test imput
 
 <figure>
   <img src="qualitative_imgs.jpg" alt="CHATS results">
