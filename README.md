@@ -7,10 +7,12 @@
 CHATS is a next-generation framework that unifies human preference alignment with classifier-free guidance by modeling both preferred and dispreferred distributions and using a proxy-prompt-based sampling strategy for superior text–image alignment, fidelity, and aesthetic consistency. See the images generated below for examples.
 
 
-<figure>
-  <img src="qualitative_imgs.jpg" alt="CHATS results">
-  <figcaption style="text-align: center;">Generation examples using CHATS (cf. Fig.1 in our paper).</figcaption>
-</figure>
+<p align="center">
+  <img src="qualitative_imgs.jpg" width="95%" alt="CHATS results" >
+  <br>
+  <em>Generation examples using CHATS (cf. Fig.1 in our paper).</em>
+</p>
+
 
 ---
 
