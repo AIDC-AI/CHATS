@@ -1,14 +1,14 @@
 # CHATS: Combining Human-Aligned Optimization and Test-Time Sampling for Text-to-Image Generation (ICML2025)
 
 <p align="center"> 
-📝 <a href="https://arxiv.org/abs/2502.12579" target="_blank">Paper</a>  • 💡 <a href="https://zhuanlan.zhihu.com/p/1904156278621737628" target="_blank">知乎</a> • 🤗 <a href="https://huggingface.co/AIDC-AI/CHATS" target="_blank">HF Repo</a> • 🖼️ <a href="https://huggingface.co/spaces/AIDC-AI/CHATS" target="_blank">Demo</a> 
+📝 <a href="https://arxiv.org/abs/2502.12579" target="_blank">Paper</a>  • 💡 <a href="https://zhuanlan.zhihu.com/p/1904156278621737628" target="_blank">知乎</a> • 🤗 <a href="https://huggingface.co/AIDC-AI/CHATS" target="_blank">SDXL Model</a> • 🤗 <a href="https://huggingface.co/AIDC-AI/CHATS-SD1d5" target="_blank">SD1.5 Model</a> • 🖼️ <a href="https://huggingface.co/spaces/AIDC-AI/CHATS" target="_blank">Demo</a> 
 </p>
 
 CHATS is a next-generation framework that unifies human preference alignment with classifier-free guidance by modeling both preferred and dispreferred distributions and using a proxy-prompt-based sampling strategy for superior text–image alignment, fidelity, and aesthetic consistency. See the images generated below for examples.
 
 
 <p align="center">
-  <img src="qualitative_imgs.jpg" width="95%" alt="CHATS results" >
+  <img src="imgs/qualitative_imgs.jpg" width="95%" alt="CHATS results" >
   <br>
   <em>Generation examples using CHATS (cf. Fig.1 in our paper).</em>
 </p>
@@ -43,22 +43,32 @@ pip install -r requirements.txt
 
 ## 📂 Model Checkpoints
 
-We provide pretrained CHATS checkpoints on SDXL for easy download and evaluation:
+We provide pretrained CHATS checkpoints for easy download and evaluation:
  
-- **Model Repository**: [![Hugging Face](https://img.shields.io/badge/Hugging%20Face-CHATS-blue?logo=Huggingface)](https://huggingface.co/AIDC-AI/CHATS)
+- **SDXL**: [![Hugging Face](https://img.shields.io/badge/Hugging%20Face-CHATS%20SDXL-blue?logo=Huggingface)](https://huggingface.co/AIDC-AI/CHATS)
 
+- **SD1.5**: [![Hugging Face](https://img.shields.io/badge/Hugging%20Face-CHATS%20SD1.5-blue?logo=Huggingface)](https://huggingface.co/AIDC-AI/CHATS-SD1d5)
 
 ## 🛠️ Quick Start
 
 ```python
 import torch
-from pipeline import ChatsSDXLPipeline
+from pipelines.pipeline_sdxl import ChatsSDXLPipeline
+from pipelines.pipeline_sd15 import ChatsSD15Pipeline
 
 # Load CHATS-SDXL pipeline
 pipe = ChatsSDXLPipeline.from_pretrained(
         "AIDC-AI/CHATS",
         torch_dtype=torch.bfloat16
 )
+
+# or
+# Load CHATS-SD1.5 pipeline
+# pipe = ChatsSD15Pipeline.from_pretrained(
+#         "AIDC-AI/CHATS-SD1d5",
+#         torch_dtype=torch.bfloat16
+# )
+
 pipe.to("cuda")
 
 # Generate images
@@ -96,6 +106,7 @@ accelerate launch --config_file=config/ac_ds_8gpu_zero0.yaml  train.py \
         --use_adafactor \
         --gradient_checkpointing \
         --dataset_name=data-is-better-together/open-image-preferences-v1-binarized \
+        --sdxl \
 ```
 
 ### Args:
@@ -106,6 +117,7 @@ accelerate launch --config_file=config/ac_ds_8gpu_zero0.yaml  train.py \
 - output: output dir
 - dataset_name: the huggingface sufix of the selected dataset (e.g. OIP)
 
+See the scripts in the `scripts` folder for further information.
 
 
 ## 📚 Citation

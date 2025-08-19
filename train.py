@@ -66,6 +66,7 @@ logger = get_logger(__name__, log_level="INFO")
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
+    parser.add_argument("--sdxl", action='store_true', help="Train sdxl, or sd1.5")
     parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
@@ -266,8 +267,6 @@ def parse_args():
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
 
-    ## SDXL
-    print("Running CHATS-SDXL")
     if args.resolution is None:
       args.resolution = 1024
             
@@ -320,7 +319,22 @@ def encode_prompt_sdxl(batch, text_encoders, tokenizers, proportion_empty_prompt
     return {"prompt_embeds": prompt_embeds, "pooled_prompt_embeds": pooled_prompt_embeds}
 
 
-
+def tokenize_captions(examples, tokenizer, is_train=True):
+    captions = []
+    for caption in examples['prompt']:
+        if isinstance(caption, str):
+            captions.append(caption)
+        elif isinstance(caption, (list, np.ndarray)):
+            # take a random caption if there are multiple
+            captions.append(random.choice(caption) if is_train else caption[0])
+        else:
+            raise ValueError(
+                f"Caption column `{caption_column}` should contain either strings or lists of strings."
+            )
+    inputs = tokenizer(
+        captions, max_length=tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
+    )
+    return inputs.input_ids
 
 def main():
     
@@ -370,8 +384,11 @@ def main():
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
 
     # Load the tokenizers
-    tokenizer_one = AutoTokenizer.from_pretrained(args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision, use_fast=False)
-    tokenizer_two = AutoTokenizer.from_pretrained(args.pretrained_model_name_or_path, subfolder="tokenizer_2", revision=args.revision, use_fast=False)
+    if args.sdxl:
+        tokenizer_one = AutoTokenizer.from_pretrained(args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision, use_fast=False)
+        tokenizer_two = AutoTokenizer.from_pretrained(args.pretrained_model_name_or_path, subfolder="tokenizer_2", revision=args.revision, use_fast=False)
+    else:
+        tokenizer = CLIPTokenizer.from_pretrained(args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision)
 
 
     # Not sure if we're hitting this at all
@@ -398,15 +415,22 @@ def main():
     # `from_pretrained` So CLIPTextModel and AutoencoderKL will not enjoy the parameter sharding
     # across multiple gpus and only UNet2DConditionModel will get ZeRO sharded.
     with ContextManagers(deepspeed_zero_init_disabled_context_manager()):
-        # SDXL has two text encoders
-        text_encoder_one = CLIPTextModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision)
-        text_encoder_two = CLIPTextModelWithProjection.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision)
+        if args.sdxl:
+            # SDXL has two text encoders
+            text_encoder_one = CLIPTextModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision)
+            text_encoder_two = CLIPTextModelWithProjection.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision)
 
-        text_encoders = [text_encoder_one, text_encoder_two]
-        tokenizers = [tokenizer_one, tokenizer_two]
-
-        # Can custom-select VAE (used in original SDXL tuning)
-        vae = AutoencoderKL.from_pretrained(args.pretrained_vae_model_name_or_path, subfolder=None, revision=args.revision)
+            text_encoders = [text_encoder_one, text_encoder_two]
+            tokenizers = [tokenizer_one, tokenizer_two]
+        else:
+            text_encoder = CLIPTextModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision)
+        
+        vae_path = (
+            args.pretrained_model_name_or_path
+            if args.pretrained_vae_model_name_or_path is None
+            else args.pretrained_vae_model_name_or_path
+        )
+        vae = AutoencoderKL.from_pretrained(vae_path, subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None, revision=args.revision)
         ref_unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision)
 
     
@@ -417,11 +441,12 @@ def main():
 
     # Freeze vae, text_encoder(s), reference unet
     vae.requires_grad_(False)
-    text_encoder_one.requires_grad_(False)
-    text_encoder_two.requires_grad_(False)
+    if args.sdxl:
+        text_encoder_one.requires_grad_(False)
+        text_encoder_two.requires_grad_(False)
+    else:
+        text_encoder.requires_grad_(False)
     ref_unet.requires_grad_(False)
-    
-    print(sum([p.numel() for p in unet.parameters() if p.requires_grad]) / 1000000, 'M parameters')
 
     # xformers efficient attention
     if is_xformers_available():
@@ -484,6 +509,7 @@ def main():
     for n, p in unet.named_parameters():
         if p.requires_grad:
             print(n)
+    print(sum([p.numel() for p in unet.parameters() if p.requires_grad]) / 1000000, 'M parameters')
 
     if args.use_adafactor:
         optimizer = transformers.Adafactor(params_to_optimize,
@@ -591,15 +617,19 @@ def main():
         
     # Move text_encode and vae to cpu and cast to weight_dtype
     vae.to(accelerator.device, dtype=weight_dtype)
-    text_encoder_one.to(accelerator.device, dtype=weight_dtype)
-    text_encoder_two.to(accelerator.device, dtype=weight_dtype)
+    if args.sdxl:
+        text_encoder_one.to(accelerator.device, dtype=weight_dtype)
+        text_encoder_two.to(accelerator.device, dtype=weight_dtype)
+    else:
+        text_encoder.to(accelerator.device, dtype=weight_dtype)
     ref_unet.to(accelerator.device, dtype=weight_dtype)
 
     # Offload to cpu to redue the GPU memory consumption
-    vae = accelerate.cpu_offload(vae)
-    text_encoder_one = accelerate.cpu_offload(text_encoder_one)
-    text_encoder_two = accelerate.cpu_offload(text_encoder_two)
-    ref_unet = accelerate.cpu_offload(ref_unet)
+    if args.sdxl:
+        vae = accelerate.cpu_offload(vae)
+        text_encoder_one = accelerate.cpu_offload(text_encoder_one)
+        text_encoder_two = accelerate.cpu_offload(text_encoder_two)
+        ref_unet = accelerate.cpu_offload(ref_unet)
 
     
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
@@ -689,33 +719,39 @@ def main():
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
                 
                 with torch.no_grad():
-                    add_time_ids = torch.tensor([args.resolution, 
-                                                    args.resolution,
-                                                    0,
-                                                    0,
-                                                    args.resolution, 
-                                                    args.resolution],
-                                                    dtype=weight_dtype,
-                                                    device=accelerator.device)[None, :].repeat(timesteps.size(0), 1)
-                    prompt_batch = encode_prompt_sdxl(batch, 
-                                                        text_encoders,
-                                                        tokenizers,
-                                                        0.0, 
-                                                        caption_column='prompt',
-                                                        is_train=True,
-                                                        )
-                
-                prompt_batch["prompt_embeds"] = prompt_batch["prompt_embeds"].repeat(2, 1, 1)
-                prompt_batch["pooled_prompt_embeds"] = prompt_batch["pooled_prompt_embeds"].repeat(2, 1)
-                unet_added_conditions = {"time_ids": add_time_ids, "text_embeds": prompt_batch["pooled_prompt_embeds"]}
-                #### END PREP BATCH ####
-                        
+                    if args.sdxl:
+                        add_time_ids = torch.tensor([args.resolution, 
+                                                        args.resolution,
+                                                        0,
+                                                        0,
+                                                        args.resolution, 
+                                                        args.resolution],
+                                                        dtype=weight_dtype,
+                                                        device=accelerator.device)[None, :].repeat(timesteps.size(0), 1)
+                        prompt_batch = encode_prompt_sdxl(batch, 
+                                                            text_encoders,
+                                                            tokenizers,
+                                                            0.0, 
+                                                            caption_column='prompt',
+                                                            is_train=True,
+                                                            )
+                    else:
+                        input_ids = tokenize_captions(batch, tokenizer).to(text_encoder.device)
+                        encoder_hidden_states = text_encoder(input_ids)[0]
+                        encoder_hidden_states = encoder_hidden_states.repeat(2, 1, 1)
+
+                if args.sdxl:
+                    prompt_batch["prompt_embeds"] = prompt_batch["prompt_embeds"].repeat(2, 1, 1)
+                    prompt_batch["pooled_prompt_embeds"] = prompt_batch["pooled_prompt_embeds"].repeat(2, 1)
+                    unet_added_conditions = {"time_ids": add_time_ids, "text_embeds": prompt_batch["pooled_prompt_embeds"]}
+
+                    model_batch_args = (noisy_latents, timesteps,  prompt_batch["prompt_embeds"])
+                else:
+                    model_batch_args = (noisy_latents, timesteps,  encoder_hidden_states)
+
                 assert noise_scheduler.config.prediction_type == "epsilon"
                 target = noise
                
-                # Make the prediction from the model we're learning
-                model_batch_args = (noisy_latents, timesteps,  prompt_batch["prompt_embeds"])
-                
                 model_batch_args_win = list(_arg.chunk(2)[0] for _arg in model_batch_args)
                 model_batch_args_lose = list(_arg.chunk(2)[1] for _arg in model_batch_args)
 
@@ -726,14 +762,17 @@ def main():
                 if null_prompt_flag:
                     model_batch_args_lose[-1] = torch.zeros_like(model_batch_args_lose[-1])
 
-                added_cond_kwargs = unet_added_conditions
+                if args.sdxl:
+                    added_cond_kwargs = unet_added_conditions
+                    assert added_cond_kwargs is not None
+                    added_cond_kwargs_win = {k : v.chunk(2)[0] for k,v in added_cond_kwargs.items()}
+                    added_cond_kwargs_lose = {k : v.chunk(2)[1] for k,v in added_cond_kwargs.items()}
+                    if null_prompt_flag:
+                        added_cond_kwargs_lose['text_embeds'] = torch.zeros_like(added_cond_kwargs_lose['text_embeds'])
+                else:
+                    added_cond_kwargs_win = None
+                    added_cond_kwargs_lose = None
 
-                assert added_cond_kwargs is not None
-                added_cond_kwargs_win = {k : v.chunk(2)[0] for k,v in added_cond_kwargs.items()}
-                added_cond_kwargs_lose = {k : v.chunk(2)[1] for k,v in added_cond_kwargs.items()}
-                if null_prompt_flag:
-                    added_cond_kwargs_lose['text_embeds'] = torch.zeros_like(added_cond_kwargs_lose['text_embeds'])
-                
                 model_pred_win = unwrap_unet["win"](
                                 *model_batch_args_win,
                                  added_cond_kwargs = added_cond_kwargs_win
@@ -748,7 +787,10 @@ def main():
                 model_losses_l = (model_pred_lose - target.chunk(2)[1]).pow(2).mean(dim=[1,2,3])
                 
                 ref_model_batch_args = [torch.cat([win_arg, lose_arg], dim=0) for win_arg, lose_arg in zip(model_batch_args_win, model_batch_args_lose)]
-                ref_model_added_cond_kwargs = {k : torch.cat([added_cond_kwargs_win[k], added_cond_kwargs_lose[k]], dim=0) for k in added_cond_kwargs}
+                if args.sdxl:
+                    ref_model_added_cond_kwargs = {k : torch.cat([added_cond_kwargs_win[k], added_cond_kwargs_lose[k]], dim=0) for k in added_cond_kwargs}
+                else:
+                    ref_model_added_cond_kwargs = None
 
                 ref_pred = ref_unet(
                                 *ref_model_batch_args,
